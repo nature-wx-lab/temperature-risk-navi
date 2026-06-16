@@ -1,6 +1,7 @@
-const DATA_URL = "./data/climatology_index_1996_2025_s_stations.json";
-const STATION_DATA_URL = "./data/stations/{station_key}.json";
-const FORECAST_URL = "./data/twoweek_latest_s_stations.json";
+const DATA_VERSION = "20260616a";
+const DATA_URL = `./data/climatology_index_1996_2025_s_stations.json?v=${DATA_VERSION}`;
+const STATION_DATA_URL = `./data/stations/{station_key}.json?v=${DATA_VERSION}`;
+const FORECAST_URL = `./data/twoweek_latest_s_stations.json?v=${DATA_VERSION}`;
 const THRESHOLDS = [-5, 0, 5, 10, 15, 20, 25, 30, 35, 40];
 
 const elements = {
