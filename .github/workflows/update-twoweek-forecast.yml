@@ -1,0 +1,37 @@
+name: Update two-week temperature forecast
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 06:20 and 15:20 JST. GitHub Actions schedules run in UTC and may be delayed.
+    - cron: "20 21,6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Update forecast JSON
+        run: python scripts/update_twoweek_forecast.py
+
+      - name: Commit forecast update
+        run: |
+          if git diff --quiet -- data/twoweek_latest_s_stations.json; then
+            echo "No forecast changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/twoweek_latest_s_stations.json
+          git commit -m "Update two-week temperature forecast"
+          git push

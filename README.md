@@ -1,0 +1,87 @@
+# 気温リスクナビ
+
+公開用の静的プロトタイプです。`data/` 以下には、気象庁「過去の気象データ検索」の観測値から作った集計済みJSONだけを置きます。作業用SQLite、個人メモ、非公開ワークスペースのファイルは公開対象に含めません。
+
+公開時の読み込みを軽くし、GitHubのブラウザアップロード制限を避けるため、気候統計データは地点別に分割しています。入口では地点一覧だけを読み、選択地点の統計JSONだけを追加で読み込みます。
+
+## 対象地点
+
+`data/weather/japan_all_stations/station_inventory_current_temperature.csv` のうち、現役の気温観測地点で `kind=s` / `daily_s1` の地点を対象にしています。気象庁地点図の赤い二重丸（気象台等）に相当する地点として扱うためです。
+
+## 機能
+
+- 統計期間は、過去30年、20年、10年、5年、3年を切り替えられる。
+- 単年表示では、1996〜2025年の任意の1年を黒線で表示し、背景統計は別途30年、20年、10年、5年、3年から選べる。
+- 2026年実況は、公開用JSONまたは公開リポジトリの自動更新で取得済みのデータを緑線で重ねる。
+- 2週間気温予報は、気象庁の `data/Latest` JSONが取得できた地点だけ紫線で重ねる。
+- 目安温度は、`-5℃ / 0℃ / 5℃ / 10℃ / 15℃ / 20℃ / 25℃ / 30℃ / 35℃ / 40℃`。
+- 初期表示は、園芸・メダカ管理で使いやすい `最低気温 / 10℃ / 東京 / 過去30年` にする。
+- 重ね合わせボタンは、`今年の観測値を重ね表示`、`2週間気温予報を重ね表示` と書く。2週間気温予報の更新時刻は、ボタン内ではなくグラフ下部のステータス表示へ出す。
+- サマリーカードは、しきい値の「上回るタイミング」「下回るタイミング」を最重要情報として先頭に置く。上回る側は、遅いほど遅霜・低温リスクが残るため、最速、平均、慎重目安、最遅の順に並べる。下回る側は、早いほど秋の低温リスクが出るため、最速、慎重目安、平均、最遅の順に並べる。
+- 補助カードは、日付と気温を分けて表示し、視認性を優先する。平均値カードは「日最高/日最低気温平均の年間最高・年間最低」、極値カードは「過去N年の観測最高・観測最低」と書き、全期間の観測史上記録と誤読されないようにする。
+- 見出し、表示条件、地点・要約は、記号ボタンで個別に折りたためる。初期表示でもグラフが早く見えるよう、上部UIは圧縮している。
+- グラフ上のホイール操作で日付軸を拡大・縮小できる。ズーム時は表示範囲に合わせて縦軸を自動調整し、下部の横スクロールバーまたはグラフドラッグで表示期間を移動できる。ダブルクリックで全期間表示に戻る。
+- しきい値の「上回るタイミング」「下回るタイミング」は、過去N年最速、過去N年平均、過去N年慎重目安、過去N年最遅の8日付を出し、グラフ上に赤丸で重ねる。下回る側の慎重目安は早期低温リスクを見るため、低め側10%境界を使う。
+- 「上回るタイミング」の最遅は、経験下限がピーク前に最後にしきい値を下回った後、安定して上回る日として扱う。「下回るタイミング」の最遅は、経験上限がピーク後に最後にしきい値以上になった後、安定して下回る日として扱う。単発の季節外れ高温・低温ではなく、管理上の安全側の日付を見るため。
+
+## 再生成
+
+```bash
+python scripts/build_public_temperature_climatology_site.py
+python public/weather-climatology/scripts/split_climatology_data.py
+```
+
+2週間気温予報を更新する場合:
+
+```bash
+python scripts/build_public_twoweek_forecast.py --write-curl-config data/weather/twoweek_latest_s_stations/curl_config_latest.txt
+curl --config data/weather/twoweek_latest_s_stations/curl_config_latest.txt
+python scripts/build_public_twoweek_forecast.py
+```
+
+今年実況を更新する場合:
+
+```bash
+python public/weather-climatology/scripts/update_current_observations.py --months-back 1
+```
+
+2026-06-05の公開運用では、GitHub Actions上の今年実況更新でJMA取得が大量に `HTTP Error 404` になった一方、ローカルMacから同じスクリプトを実行すると全156地点を正常取得できた。緊急時はローカルで次を実行し、更新後の `data/` を公開リポジトリへ反映してcommit/pushする。
+
+```bash
+python public/weather-climatology/scripts/update_current_observations.py --full-year-to-date
+```
+
+## 公開と自動更新
+
+現在の `http://localhost:8765/` は、このPC上でサーバーが起動している間だけ見られる確認用URLです。Xなどで共有して誰でも開けるようにするには、`public/weather-climatology/` の中身だけをGitHub Pagesなどの静的ホスティングへ公開します。
+
+公開したURLは、基本的に「URLを知っている人なら誰でも見られる」状態です。検索されにくくすることはできますが、URLが共有・転載されれば第三者もアクセスできます。限定公開や認証が必要な情報は、このフォルダに入れません。
+
+2週間気温予報は静的JSONとして配信します。公開後に最新化するには、公開リポジトリのルートで次を実行します。
+
+```bash
+python scripts/update_twoweek_forecast.py
+```
+
+このフォルダをそのまま公開リポジトリのルートにする場合、`.github/workflows/update-twoweek-forecast.yml` を使うと、GitHub Actionsが毎日 06:20 / 15:20 JST ごろに気象庁 `data/Latest` JSONを取得し、`data/twoweek_latest_s_stations.json` に変更があれば自動コミットします。気象庁の更新そのものを直接検知するのではなく、更新後に取りに行くポーリング方式なので、反映には多少の遅れがあります。
+
+今年の観測実況も静的JSONとして配信します。公開後に最新化するには、公開リポジトリのルートで次を実行します。
+
+```bash
+python scripts/update_current_observations.py --months-back 1
+```
+
+`.github/workflows/update-current-observations.yml` を使うと、GitHub Actionsが毎日 09:40 / 12:40 / 15:40 / 18:40 JST ごろに気象庁「過去の気象データ検索」の日ごとの値を取得し、`data/stations/*.json` と `data/climatology_index_1996_2025_s_stations.json` の今年実況を更新します。通常は前月・当月だけを取り直し、月またぎの取りこぼしを防ぎます。さらに毎日 21:40 JST ごろに1月から当月までを再走査し、遅延反映や一時的な取得漏れを拾います。取得が早すぎてJMA側に前日分がまだ入っていない場合でも、既存値は消さず、後続実行で反映されます。
+
+Actionsが緑の `Success` でも、JMA取得エラーが多いと `latest_date` が進まないことがあります。ログの `latest_date`、`changed_station_count`、`error_count` と、公開JSONの `current_year.latest_date` を確認してください。
+
+## 公開時の注意
+
+- このフォルダ単体を公開対象にする。
+- `data/climatology_index_1996_2025_s_stations.json` と `data/stations/*.json` を公開する。旧一括JSONは公開対象にしない。
+- `data/weather/` のSQLiteやキャッシュHTMLは公開しない。
+- 非公開情報、内部メモ、ローカル環境固有の文字列を公開しない。
+- GitHubでは現行ファイルだけでなく、コミット履歴、READMEの過去版、Actionsログ、コミット作成者名・メールも公開対象として扱う。公開前に現行ファイルと履歴の両方を確認する。
+- 出典表記と独自集計である旨を残す。
+- 欠測は0扱いしない。
+- 過去MAX/MINは園芸・メダカ向けの重要な経験上限・経験下限として表示する。
