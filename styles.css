@@ -40,7 +40,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px 14px;
+  gap: 8px 12px;
   min-width: 0;
 }
 
@@ -76,9 +76,10 @@ h1 {
 .guide-link {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 4px 10px 4px 8px;
+  align-self: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 10px 4px 7px;
   border: 1px solid #b8c3d6;
   border-radius: 999px;
   background: #f6f9ff;
@@ -106,8 +107,8 @@ h1 {
 
 .guide-icon {
   display: inline-grid;
-  width: 20px;
-  height: 20px;
+  width: 19px;
+  height: 19px;
   place-items: center;
   border-radius: 999px;
   background: var(--blue);
@@ -115,8 +116,8 @@ h1 {
 }
 
 .guide-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   display: block;
 }
 
@@ -733,10 +734,6 @@ canvas.dragging {
   .header-actions {
     justify-content: space-between;
     width: 100%;
-  }
-
-  .guide-link {
-    order: 0;
   }
 
   .toolbar {
