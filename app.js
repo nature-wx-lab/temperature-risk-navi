@@ -1137,6 +1137,7 @@ function pointIsInsidePlot(point, plot) {
 }
 
 function startChartDrag(event) {
+  if (event.pointerType === "touch") return;
   if (event.button !== 0) return;
   const plot = refs.canvas._plot;
   if (!plot) return;

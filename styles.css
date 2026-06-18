@@ -793,6 +793,15 @@ canvas.dragging {
   }
 
   .chart-shell {
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  canvas {
+    width: max(820px, 100%);
+    max-width: none;
+    touch-action: pan-x pan-y;
   }
 }
