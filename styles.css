@@ -73,6 +73,61 @@ h1 {
   white-space: nowrap;
 }
 
+.guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 4px 10px 4px 8px;
+  border: 1px solid #b8c3d6;
+  border-radius: 999px;
+  background: #f6f9ff;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(37, 59, 115, 0.1);
+  transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+}
+
+.guide-link:hover {
+  border-color: var(--blue);
+  background: #edf4ff;
+  box-shadow: 0 7px 18px rgba(37, 59, 115, 0.16);
+  transform: translateY(-1px);
+}
+
+.guide-link:focus-visible {
+  outline: 2px solid #2f6bd8;
+  outline-offset: 2px;
+}
+
+.guide-icon {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+}
+
+.guide-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.guide-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .sns-links {
   display: flex;
   flex-wrap: wrap;
@@ -678,6 +733,10 @@ canvas.dragging {
   .header-actions {
     justify-content: space-between;
     width: 100%;
+  }
+
+  .guide-link {
+    order: 0;
   }
 
   .toolbar {
