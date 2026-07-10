@@ -382,7 +382,7 @@ function setOverlayButtons() {
   if (freshness === "available") {
     const updateText = formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at);
     refs.forecastButton.textContent = "2週間気温予報を重ね表示";
-    refs.forecastButton.title = `2週間気温予報を重ね表示（更新時刻 ${updateText}）`;
+    refs.forecastButton.title = `2週間気温予報を重ね表示（更新時刻 ${updateText}／1週目は日別値・2週目は5日間平均値）`;
   } else if (freshness === "stale") {
     const updateText = formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at);
     refs.forecastButton.textContent = "2週間気温予報は期限切れ";
@@ -987,11 +987,15 @@ function chartPresentation() {
     forecastContext,
     legend,
     layers,
+    period,
   };
 }
 
 function chartTitle(presentation = chartPresentation()) {
-  return `${presentation.heading}｜${presentation.focus.join("・")}`;
+  const background = state.viewMode === "year"
+    ? `（背景：${presentation.period.start_year}〜${presentation.period.end_year}年統計）`
+    : "";
+  return `${presentation.heading}｜${presentation.focus.join("・")}${background}`;
 }
 
 function chartAccessibleLabel(presentation) {
@@ -1006,31 +1010,21 @@ function chartAccessibleLabel(presentation) {
 function drawChartHeader(ctx, width, presentation) {
   const compact = width < 900;
   const maxWidth = width - 24;
-  let y = compact ? 23 : 30;
+  const fontFamily = "-apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif";
+  const fitFont = (text, preferred, minimum, weight) => {
+    let size = preferred;
+    ctx.font = `${weight} ${size}px ${fontFamily}`;
+    const measured = ctx.measureText(text).width;
+    if (measured > maxWidth) size = Math.max(minimum, Math.floor(size * (maxWidth / measured)));
+    ctx.font = `${weight} ${size}px ${fontFamily}`;
+  };
+  const title = chartTitle(presentation);
 
   ctx.textAlign = "center";
   ctx.fillStyle = colors.ink;
-  ctx.font = `${compact ? "700 20px" : "700 24px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
-  ctx.fillText(presentation.heading, width / 2, y, maxWidth);
-
-  y += compact ? 21 : 25;
-  ctx.font = `${compact ? "700 15px" : "700 18px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
-  ctx.fillText(presentation.focus.join(" ＋ "), width / 2, y, maxWidth);
-
-  ctx.fillStyle = colors.muted;
-  ctx.font = `${compact ? "10px" : "12px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
-  y += compact ? 16 : 18;
-  ctx.fillText(presentation.context.join(" ｜ "), width / 2, y, maxWidth);
-
-  if (presentation.forecastContext.length) {
-    y += compact ? 14 : 16;
-    ctx.fillText(presentation.forecastContext.join(" ｜ "), width / 2, y, maxWidth);
-  }
-
-  y += compact ? 14 : 16;
-  ctx.font = `${compact ? "9px" : "11px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
-  ctx.fillText(presentation.legend.join(" / "), width / 2, y, maxWidth);
-  return y + (compact ? 13 : 16);
+  fitFont(title, compact ? 20 : 24, compact ? 12 : 15, 700);
+  ctx.fillText(title, width / 2, compact ? 28 : 34, maxWidth);
+  return compact ? 50 : 58;
 }
 
 function drawChart() {

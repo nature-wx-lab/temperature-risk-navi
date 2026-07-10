@@ -767,6 +767,20 @@ canvas.dragging {
   }
 }
 
+@media (max-width: 900px) {
+  .chart-shell {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  canvas {
+    width: max(820px, 100%);
+    max-width: none;
+    touch-action: pan-x pan-y;
+  }
+}
+
 @media (max-width: 620px) {
   .app-header {
     align-items: flex-start;
@@ -793,15 +807,6 @@ canvas.dragging {
   }
 
   .chart-shell {
-    overflow-x: auto;
-    overflow-y: hidden;
     padding: 8px;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  canvas {
-    width: max(820px, 100%);
-    max-width: none;
-    touch-action: pan-x pan-y;
   }
 }
