@@ -26,29 +26,12 @@
 
 ## 再生成
 
-```bash
-python scripts/build_public_temperature_climatology_site.py
-python public/weather-climatology/scripts/split_climatology_data.py
-```
-
-2週間気温予報を更新する場合:
-
-```bash
-python scripts/build_public_twoweek_forecast.py --write-curl-config data/weather/twoweek_latest_s_stations/curl_config_latest.txt
-curl --config data/weather/twoweek_latest_s_stations/curl_config_latest.txt
-python scripts/build_public_twoweek_forecast.py
-```
-
-今年実況を更新する場合:
-
-```bash
-python public/weather-climatology/scripts/update_current_observations.py --months-back 1
-```
+この公開リポジトリは、集計済みの1996〜2025年統計と、公開環境だけで実行できる今年実況・2週間気温予報の更新処理を収録します。過去統計を元資料から作り直す非公開ワークスペース側の生成処理は含めません。日々の公開データ更新コマンドは次節にまとめます。
 
 2026-06-05の公開運用では、GitHub Actions上の今年実況更新でJMA取得が大量に `HTTP Error 404` になった一方、ローカルMacから同じスクリプトを実行すると全156地点を正常取得できた。緊急時はローカルで次を実行し、更新後の `data/` を公開リポジトリへ反映してcommit/pushする。
 
 ```bash
-python public/weather-climatology/scripts/update_current_observations.py --full-year-to-date
+python scripts/update_current_observations.py --full-year-to-date
 ```
 
 ## 公開と自動更新
@@ -62,6 +45,8 @@ python public/weather-climatology/scripts/update_current_observations.py --full-
 ```bash
 python scripts/update_twoweek_forecast.py
 ```
+
+ブラウザは公開JSONをページ表示ごとに再検証し、固定した手動キャッシュ番号には依存しません。取得済みの2週間気温予報について、対象期間がすべて終了している場合は「期限切れ」と明示し、重ね表示ボタンを無効にします。
 
 このフォルダをそのまま公開リポジトリのルートにする場合、`.github/workflows/update-twoweek-forecast.yml` を使うと、GitHub Actionsが毎日 06:20 / 15:20 JST ごろに気象庁 `data/Latest` JSONを取得し、`data/twoweek_latest_s_stations.json` に変更があれば自動コミットします。気象庁の更新そのものを直接検知するのではなく、更新後に取りに行くポーリング方式なので、反映には多少の遅れがあります。
 

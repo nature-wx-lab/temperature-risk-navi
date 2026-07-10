@@ -1,7 +1,6 @@
-const DATA_VERSION = "20260616a";
-const DATA_URL = `./data/climatology_index_1996_2025_s_stations.json?v=${DATA_VERSION}`;
-const STATION_DATA_URL = `./data/stations/{station_key}.json?v=${DATA_VERSION}`;
-const FORECAST_URL = `./data/twoweek_latest_s_stations.json?v=${DATA_VERSION}`;
+const DATA_URL = "./data/climatology_index_1996_2025_s_stations.json";
+const STATION_DATA_URL = "./data/stations/{station_key}.json";
+const FORECAST_URL = "./data/twoweek_latest_s_stations.json";
 const THRESHOLDS = [-5, 0, 5, 10, 15, 20, 25, 30, 35, 40];
 
 const elements = {
@@ -188,8 +187,28 @@ function forecastStation() {
   return state.forecastData.stations?.[state.stationKey] || null;
 }
 
+function currentDateKeyInJapan(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function forecastFreshness() {
+  const rows = forecastRows();
+  if (!rows.length) return "unavailable";
+  const today = currentDateKeyInJapan();
+  return rows.some((row) => typeof row.date === "string" && row.date >= today && finite(row.value))
+    ? "available"
+    : "stale";
+}
+
 function forecastAvailable() {
-  return forecastRows().length > 0;
+  return forecastFreshness() === "available";
 }
 
 function formatUpdateHour(value) {
@@ -253,9 +272,10 @@ function chartIsZoomed() {
 
 function forecastPoints() {
   const lookup = dayKeyIndex();
+  const today = currentDateKeyInJapan();
   return forecastRows()
     .map((row) => ({ ...row, index: lookup.get(row.day_key) }))
-    .filter((row) => Number.isInteger(row.index) && finite(row.value));
+    .filter((row) => row.date >= today && Number.isInteger(row.index) && finite(row.value));
 }
 
 function setActiveElementButtons() {
@@ -309,15 +329,20 @@ function setPanelTogglePositions() {
 }
 
 function setOverlayButtons() {
+  const freshness = forecastFreshness();
   refs.thresholdMarkersButton.classList.toggle("active", state.showThresholdMarkers);
   refs.currentYearButton.classList.toggle("active", state.showCurrentYear);
   refs.forecastButton.classList.toggle("active", state.showForecast);
   refs.forecastButton.disabled = !forecastAvailable();
   refs.currentYearButton.textContent = "今年の観測値を重ね表示";
-  if (forecastAvailable()) {
+  if (freshness === "available") {
     const updateText = formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at);
     refs.forecastButton.textContent = "2週間気温予報を重ね表示";
     refs.forecastButton.title = `2週間気温予報を重ね表示（更新時刻 ${updateText}）`;
+  } else if (freshness === "stale") {
+    const updateText = formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at);
+    refs.forecastButton.textContent = "2週間気温予報は期限切れ";
+    refs.forecastButton.title = `最新の予報期間が終了しています（最終更新 ${updateText}）`;
   } else {
     refs.forecastButton.textContent = "2週間気温予報なし";
     refs.forecastButton.title = "この地点の2週間気温予報はありません";
@@ -621,9 +646,13 @@ function updateSummary() {
 
 function updateMeta() {
   const meta = state.data.meta;
-  const forecastUpdate = forecastAvailable()
-    ? ` / 2週間気温予報: ${formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at)}`
-    : "";
+  const freshness = forecastFreshness();
+  const updateText = formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at);
+  const forecastUpdate = freshness === "available"
+    ? ` / 2週間気温予報: ${updateText}`
+    : freshness === "stale"
+      ? ` / 2週間気温予報: 期限切れ（最終更新 ${updateText}）`
+      : "";
   refs.datasetMeta.textContent = `${meta.base_period}年・気象台等${meta.station_count}地点`;
   refs.statusText.textContent = `統計期間: ${meta.base_period}年 / 今年実況: ${state.data.current_year?.latest_date || "なし"}${forecastUpdate}`;
 }
@@ -1432,7 +1461,7 @@ function bindEvents() {
 
 async function loadJson(url, fallback) {
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) return fallback;
     return await response.json();
   } catch {
