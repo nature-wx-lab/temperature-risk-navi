@@ -211,6 +211,50 @@ function forecastAvailable() {
   return forecastFreshness() === "available";
 }
 
+function hasFiniteValues(series) {
+  return Array.isArray(series) && series.some(finite);
+}
+
+function effectiveChartLayers() {
+  const forecast = forecastPoints();
+  return {
+    selectedYear: state.viewMode === "year" && hasFiniteValues(selectedYearSeries()),
+    currentYear: state.showCurrentYear && hasFiniteValues(currentYearSeries()),
+    forecast: state.showForecast && forecastAvailable() && forecast.length > 0,
+    forecastPoints: forecast,
+  };
+}
+
+function formatMonthDay(value) {
+  const match = String(value || "").match(/^\d{4}-(\d{2})-(\d{2})/);
+  return match ? `${Number(match[1])}/${Number(match[2])}` : "--";
+}
+
+function formatShortUpdateHour(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})/);
+  return match
+    ? `${Number(match[1])}/${Number(match[2])}/${Number(match[3])} ${Number(match[4])}時`
+    : "更新時刻なし";
+}
+
+function formatForecastDateRange(first, last) {
+  const start = String(first || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const end = String(last || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!start || !end) return `${formatMonthDay(first)}〜${formatMonthDay(last)}`;
+  const startLabel = `${Number(start[1])}/${Number(start[2])}/${Number(start[3])}`;
+  const endLabel = start[1] === end[1]
+    ? `${Number(end[2])}/${Number(end[3])}`
+    : `${Number(end[1])}/${Number(end[2])}/${Number(end[3])}`;
+  return `${startLabel}〜${endLabel}`;
+}
+
+function latestFiniteDayLabel(series) {
+  for (let index = Math.min(series?.length || 0, state.data.days.length) - 1; index >= 0; index -= 1) {
+    if (finite(series[index])) return state.data.days[index]?.label || null;
+  }
+  return null;
+}
+
 function formatUpdateHour(value) {
   if (!value) return "更新時刻なし";
   const date = new Date(value);
@@ -876,27 +920,117 @@ function drawThresholdMarkers(ctx, stats, xOf, yOf) {
   }
 }
 
-function chartTitle() {
+function chartPresentation() {
   const station = currentStation();
-  if (state.viewMode === "year") {
-    return `${station.name}の${state.selectedYear}年 ${elements[state.element].name}`;
-  }
-  return `${station.name}の${elements[state.element].name} ${periodMeta(state.period).label}`;
-}
+  const period = periodMeta(state.viewMode === "stats" ? state.period : state.backgroundPeriod);
+  const layers = effectiveChartLayers();
+  const currentYear = state.stationData.current_year?.year || state.data.current_year?.year;
+  const currentLabel = currentYear ? `${currentYear}年実況` : "今年実況";
+  const focus = [
+    state.viewMode === "stats"
+      ? `${period.start_year}〜${period.end_year}年の日別統計`
+      : (layers.selectedYear ? `${state.selectedYear}年の推移` : `${state.selectedYear}年（データなし）`),
+  ];
+  if (layers.currentYear) focus.push(currentLabel);
+  if (layers.forecast) focus.push("2週間気温予報");
 
-function chartSubTitle() {
-  const parts = ["赤=平均", "青=中央値", "灰色=過去MAX〜MIN"];
-  if (state.viewMode === "year") parts.push(`黒=${state.selectedYear}年`);
-  if (state.showCurrentYear) parts.push(`緑=${state.data.current_year.year}年実況`);
-  if (state.showForecast && forecastAvailable()) parts.push("紫=2週間予報");
-  if (state.showThresholdMarkers) parts.push("赤丸=目安日");
+  const context = [
+    state.viewMode === "stats"
+      ? `統計期間：${period.label}`
+      : `背景統計：${period.start_year}〜${period.end_year}年（${period.label}）`,
+  ];
+  if (layers.currentYear) {
+    const latestDate = state.stationData.current_year?.latest_date || state.data.current_year?.latest_date;
+    const latestLabel = latestFiniteDayLabel(currentYearSeries()) || formatMonthDay(latestDate);
+    context.push(`実況：${latestLabel}まで`);
+  }
+  context.push(`目安気温：${Number(state.threshold)}℃`);
   if (chartIsZoomed()) {
     const zoom = chartZoom();
     const startDay = state.data.days[Math.max(0, Math.floor(zoom.start))];
     const endDay = state.data.days[Math.min(maxDayIndex(), Math.ceil(zoom.end))];
-    parts.push(`表示=${startDay.label}〜${endDay.label}`);
+    context.push(`表示範囲：${startDay.label}〜${endDay.label}`);
   }
-  return parts.join(" / ");
+
+  const forecastContext = [];
+  if (layers.forecast) {
+    const first = layers.forecastPoints[0];
+    const last = layers.forecastPoints[layers.forecastPoints.length - 1];
+    const updated = formatShortUpdateHour(
+      forecastStation()?.report_date || state.forecastData?.meta?.generated_at,
+    );
+    forecastContext.push(
+      `予報期間：${formatForecastDateRange(first.date, last.date)}`,
+      "1週目：日別値・2週目：5日間平均値",
+      `${updated}更新`,
+    );
+  }
+
+  const legend = [
+    "赤=平均",
+    "青=中央値",
+    "青帯=過去分布の中央80%・50%",
+    "灰=期間内の最小〜最大",
+  ];
+  if (layers.selectedYear) legend.push(`黒=${state.selectedYear}年`);
+  if (layers.currentYear) legend.push(`緑=${currentLabel}`);
+  if (layers.forecast) legend.push("紫=2週間気温予報");
+  legend.push(`茶破線=${Number(state.threshold)}℃`);
+  if (state.showThresholdMarkers) {
+    legend.push(state.viewMode === "year" ? "赤丸=背景統計の目安日" : "赤丸=統計上の目安日");
+  }
+
+  return {
+    heading: `${station.name}の${elements[state.element].axis}`,
+    focus,
+    context,
+    forecastContext,
+    legend,
+    layers,
+  };
+}
+
+function chartTitle(presentation = chartPresentation()) {
+  return `${presentation.heading}｜${presentation.focus.join("・")}`;
+}
+
+function chartAccessibleLabel(presentation) {
+  return [
+    chartTitle(presentation),
+    presentation.context.join("、"),
+    presentation.forecastContext.join("、"),
+    presentation.legend.join("、"),
+  ].filter(Boolean).join("。 ");
+}
+
+function drawChartHeader(ctx, width, presentation) {
+  const compact = width < 900;
+  const maxWidth = width - 24;
+  let y = compact ? 23 : 30;
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = colors.ink;
+  ctx.font = `${compact ? "700 20px" : "700 24px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
+  ctx.fillText(presentation.heading, width / 2, y, maxWidth);
+
+  y += compact ? 21 : 25;
+  ctx.font = `${compact ? "700 15px" : "700 18px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
+  ctx.fillText(presentation.focus.join(" ＋ "), width / 2, y, maxWidth);
+
+  ctx.fillStyle = colors.muted;
+  ctx.font = `${compact ? "10px" : "12px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
+  y += compact ? 16 : 18;
+  ctx.fillText(presentation.context.join(" ｜ "), width / 2, y, maxWidth);
+
+  if (presentation.forecastContext.length) {
+    y += compact ? 14 : 16;
+    ctx.fillText(presentation.forecastContext.join(" ｜ "), width / 2, y, maxWidth);
+  }
+
+  y += compact ? 14 : 16;
+  ctx.font = `${compact ? "9px" : "11px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
+  ctx.fillText(presentation.legend.join(" / "), width / 2, y, maxWidth);
+  return y + (compact ? 13 : 16);
 }
 
 function drawChart() {
@@ -906,7 +1040,13 @@ function drawChart() {
   const days = state.data.days;
   const zoom = chartZoom();
   const range = dataRange(stats, zoom);
-  const margin = { left: Math.max(62, width * 0.06), right: 30, top: 72, bottom: 72 };
+  const presentation = chartPresentation();
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  const headerBottom = drawChartHeader(ctx, width, presentation);
+  const margin = { left: Math.max(62, width * 0.06), right: 30, top: headerBottom, bottom: 72 };
   const plot = {
     left: margin.left,
     top: margin.top,
@@ -919,17 +1059,7 @@ function drawChart() {
   const xOf = (index) => plot.left + ((index - zoom.start) / (zoom.end - zoom.start)) * plot.width;
   const yOf = (value) => plot.bottom - ((value - range.min) / (range.max - range.min)) * plot.height;
 
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.fillStyle = colors.ink;
-  ctx.font = `${width < 640 ? "700 17px" : "700 24px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
-  ctx.textAlign = "center";
-  ctx.fillText(chartTitle(), width / 2, 34, width - 24);
-  ctx.fillStyle = colors.muted;
-  ctx.font = `${width < 640 ? "10px" : "13px"} -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif`;
-  ctx.fillText(chartSubTitle(), width / 2, 56, width - 24);
+  refs.canvas.setAttribute("aria-label", chartAccessibleLabel(presentation));
 
   ctx.strokeStyle = colors.gridStrong;
   ctx.lineWidth = 1;
@@ -998,14 +1128,14 @@ function drawChart() {
     ctx.restore();
   }
 
-  if (state.viewMode === "year") {
+  if (presentation.layers.selectedYear) {
     drawLine(ctx, selectedYearSeries() || [], colors.year, 3, xOf, yOf);
   }
-  if (state.showCurrentYear) {
+  if (presentation.layers.currentYear) {
     drawLine(ctx, currentYearSeries() || [], colors.current, 3.2, xOf, yOf);
   }
-  if (state.showForecast && forecastAvailable()) {
-    drawForecast(ctx, forecastPoints(), xOf, yOf);
+  if (presentation.layers.forecast) {
+    drawForecast(ctx, presentation.layers.forecastPoints, xOf, yOf);
   }
   drawThresholdMarkers(ctx, stats, xOf, yOf);
 
@@ -1152,7 +1282,7 @@ function renderTooltip(event) {
     過去MAX〜MIN ${formatTemp(valueAt(stats.max, index))}〜${formatTemp(valueAt(stats.min, index))}
     ${state.viewMode === "year" ? `<br>${state.selectedYear}年 ${formatTemp(yearValue)}` : ""}
     ${state.showCurrentYear ? `<br>${state.data.current_year.year}年実況 ${formatTemp(currentValue)}` : ""}
-    ${state.showForecast && forecast ? `<br>2週間予報 ${formatTemp(forecast.value)}（${formatTemp(forecast.lower)}〜${formatTemp(forecast.upper)}）` : ""}
+    ${state.showForecast && forecast ? `<br>2週間気温予報 ${formatTemp(forecast.value)}（${formatTemp(forecast.lower)}〜${formatTemp(forecast.upper)}）` : ""}
     ${markerLabels.length ? `<br>目安日 ${markerLabels.join(" / ")}` : ""}
   `;
   refs.tooltip.hidden = false;
