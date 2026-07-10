@@ -47,6 +47,7 @@ const refs = {
   downloadButton: document.querySelector("#downloadButton"),
   copyButton: document.querySelector("#copyButton"),
   canvas: document.querySelector("#chartCanvas"),
+  chartResetButton: document.querySelector("#chartResetButton"),
   chartScrollbars: document.querySelector("#chartScrollbars"),
   chartHScroll: document.querySelector("#chartHScroll"),
   tooltip: document.querySelector("#tooltip"),
@@ -110,15 +111,25 @@ const scrollbarDrag = {
 
 const chartTouch = {
   pointers: new Map(),
-  pinching: false,
+  mode: "idle",
+  primaryId: null,
+  startX: 0,
+  startY: 0,
+  startInsidePlot: false,
   startDistance: 0,
   startZoomStart: 0,
   startZoomEnd: 365,
-  centerRatio: 0.5,
+  anchorIndex: 0,
+  moved: false,
+  changed: false,
 };
 
 function finite(value) {
   return Number.isFinite(value);
+}
+
+function mobileChartMode() {
+  return window.matchMedia("(max-width: 900px)").matches;
 }
 
 function formatTemp(value) {
@@ -784,8 +795,10 @@ function dataRange(stats, zoom = chartZoom()) {
 function setupCanvas() {
   const rect = refs.canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
-  const width = Math.max(320, rect.width);
-  const height = width * (780 / 1440);
+  const width = Math.max(1, rect.width);
+  const height = mobileChartMode()
+    ? Math.max(390, Math.min(460, width * 1.15))
+    : width * (780 / 1440);
   refs.canvas.width = Math.round(width * ratio);
   refs.canvas.height = Math.round(height * ratio);
   refs.canvas.style.height = `${height}px`;
@@ -1177,9 +1190,11 @@ function positionChartScrollbars(plot) {
 function syncChartScrollbars() {
   if (!refs.chartScrollbars || !refs.chartHScroll) return;
   const plot = refs.canvas._plot;
-  const show = Boolean(plot && chartIsZoomed());
-  refs.chartScrollbars.hidden = !show;
-  if (!show) return;
+  const zoomed = Boolean(plot && chartIsZoomed());
+  const mobile = mobileChartMode();
+  refs.chartScrollbars.hidden = !zoomed || mobile;
+  if (refs.chartResetButton) refs.chartResetButton.hidden = !zoomed || !mobile;
+  if (!zoomed || mobile) return;
   positionChartScrollbars(plot);
 
   const hInfo = hScrollbarInfo();
@@ -1299,11 +1314,24 @@ function pointIsInsidePlot(point, plot) {
 }
 
 function touchPoints() {
-  return [...chartTouch.pointers.values()];
+  return [...chartTouch.pointers.values()].slice(0, 2);
 }
 
 function distanceBetween(a, b) {
   return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+function clearChartTouchState() {
+  const pointerIds = [...chartTouch.pointers.keys()];
+  chartTouch.pointers.clear();
+  chartTouch.mode = "idle";
+  chartTouch.primaryId = null;
+  chartTouch.startInsidePlot = false;
+  chartTouch.moved = false;
+  chartTouch.changed = false;
+  for (const pointerId of pointerIds) {
+    if (refs.canvas.hasPointerCapture?.(pointerId)) refs.canvas.releasePointerCapture?.(pointerId);
+  }
 }
 
 function startPinchZoom() {
@@ -1312,48 +1340,133 @@ function startPinchZoom() {
   if (!plot || points.length < 2) return;
   const rect = refs.canvas.getBoundingClientRect();
   const centerX = (points[0].clientX + points[1].clientX) / 2 - rect.left;
-  chartTouch.pinching = true;
+  const zoom = chartZoom();
+  const startSpan = zoom.end - zoom.start;
+  const centerRatio = Math.max(0, Math.min(1, (centerX - plot.left) / plot.width));
+  chartTouch.mode = "pinch";
   chartTouch.startDistance = Math.max(1, distanceBetween(points[0], points[1]));
-  chartTouch.startZoomStart = plot.zoomStart;
-  chartTouch.startZoomEnd = plot.zoomEnd;
-  chartTouch.centerRatio = Math.max(0, Math.min(1, (centerX - plot.left) / plot.width));
+  chartTouch.startZoomStart = zoom.start;
+  chartTouch.startZoomEnd = zoom.end;
+  chartTouch.anchorIndex = zoom.start + centerRatio * startSpan;
+  chartTouch.moved = true;
   refs.tooltip.hidden = true;
 }
 
 function updatePinchZoom(event) {
-  if (!chartTouch.pinching) return;
+  if (chartTouch.mode !== "pinch") return;
   const plot = refs.canvas._plot;
   const points = touchPoints();
   if (!plot || points.length < 2) return;
   event.preventDefault();
+  const rect = refs.canvas.getBoundingClientRect();
+  const centerX = (points[0].clientX + points[1].clientX) / 2 - rect.left;
+  const centerRatio = Math.max(0, Math.min(1, (centerX - plot.left) / plot.width));
   const nextDistance = Math.max(1, distanceBetween(points[0], points[1]));
   const scale = Math.max(0.25, Math.min(4, nextDistance / chartTouch.startDistance));
   const startSpan = chartTouch.startZoomEnd - chartTouch.startZoomStart;
   const nextSpan = Math.max(14, Math.min(maxDayIndex(), startSpan / scale));
-  const centerIndex = chartTouch.startZoomStart + chartTouch.centerRatio * startSpan;
-  setChartZoom(centerIndex - chartTouch.centerRatio * nextSpan, centerIndex + (1 - chartTouch.centerRatio) * nextSpan);
+  setChartZoom(
+    chartTouch.anchorIndex - centerRatio * nextSpan,
+    chartTouch.anchorIndex + (1 - centerRatio) * nextSpan,
+  );
+  chartTouch.changed = true;
   state.hoverIndex = null;
   drawChart();
 }
 
-function endPinchZoom(event) {
-  chartTouch.pointers.delete(event.pointerId);
-  if (!chartTouch.pinching) return;
-  if (chartTouch.pointers.size < 2) {
-    chartTouch.pinching = false;
+function startTouchGesture(event) {
+  const plot = refs.canvas._plot;
+  if (!plot) return;
+  const point = canvasPoint(event);
+  chartTouch.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+  refs.canvas.setPointerCapture?.(event.pointerId);
+
+  if (chartTouch.pointers.size === 1) {
+    const zoom = chartZoom();
+    chartTouch.mode = "pending";
+    chartTouch.primaryId = event.pointerId;
+    chartTouch.startX = event.clientX;
+    chartTouch.startY = event.clientY;
+    chartTouch.startInsidePlot = pointIsInsidePlot(point, plot);
+    chartTouch.startZoomStart = zoom.start;
+    chartTouch.startZoomEnd = zoom.end;
+    chartTouch.moved = false;
+    chartTouch.changed = false;
+    state.hoverIndex = null;
     refs.tooltip.hidden = true;
+  } else if (chartTouch.pointers.size === 2) {
+    event.preventDefault();
+    startPinchZoom();
+  }
+}
+
+function updateTouchGesture(event) {
+  if (!chartTouch.pointers.has(event.pointerId)) return;
+  chartTouch.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
+
+  if (chartTouch.pointers.size >= 2 || chartTouch.mode === "pinch") {
+    if (chartTouch.mode !== "pinch") startPinchZoom();
+    updatePinchZoom(event);
+    return;
+  }
+
+  if (event.pointerId !== chartTouch.primaryId || chartTouch.mode === "wait" || chartTouch.mode === "vertical") return;
+  const dx = event.clientX - chartTouch.startX;
+  const dy = event.clientY - chartTouch.startY;
+
+  if (chartTouch.mode === "pending") {
+    if (Math.hypot(dx, dy) < 9) return;
+    chartTouch.moved = true;
+    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+    if (!horizontal || !chartTouch.startInsidePlot || !chartIsZoomed()) {
+      chartTouch.mode = "vertical";
+      return;
+    }
+    chartTouch.mode = "pan";
+  }
+
+  if (chartTouch.mode !== "pan") return;
+  event.preventDefault();
+  const plot = refs.canvas._plot;
+  if (!plot) return;
+  const zoomSpan = chartTouch.startZoomEnd - chartTouch.startZoomStart;
+  const dayShift = -(dx / plot.width) * zoomSpan;
+  setChartZoom(chartTouch.startZoomStart + dayShift, chartTouch.startZoomEnd + dayShift);
+  chartTouch.changed = true;
+  state.hoverIndex = null;
+  refs.tooltip.hidden = true;
+  drawChart();
+}
+
+function endTouchGesture(event, canceled = false) {
+  if (!chartTouch.pointers.has(event.pointerId)) return;
+  const wasTap = !canceled
+    && chartTouch.mode === "pending"
+    && chartTouch.pointers.size === 1
+    && chartTouch.startInsidePlot
+    && !chartTouch.moved;
+  chartTouch.pointers.delete(event.pointerId);
+  if (refs.canvas.hasPointerCapture?.(event.pointerId)) refs.canvas.releasePointerCapture?.(event.pointerId);
+
+  if (chartTouch.pointers.size > 0) {
+    if (chartTouch.mode === "pinch") chartTouch.mode = "wait";
+    return;
+  }
+
+  const changed = chartTouch.changed;
+  clearChartTouchState();
+  refs.tooltip.hidden = true;
+  if (changed) {
     updateUrl();
     syncChartScrollbars();
+  } else if (wasTap) {
+    renderTooltip(event);
   }
 }
 
 function startChartDrag(event) {
   if (event.pointerType === "touch") {
-    chartTouch.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
-    if (chartTouch.pointers.size === 2) {
-      event.preventDefault();
-      startPinchZoom();
-    }
+    startTouchGesture(event);
     return;
   }
   if (event.button !== 0) return;
@@ -1377,9 +1490,7 @@ function startChartDrag(event) {
 
 function moveChartDrag(event) {
   if (event.pointerType === "touch") {
-    if (!chartTouch.pointers.has(event.pointerId)) return;
-    chartTouch.pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
-    updatePinchZoom(event);
+    updateTouchGesture(event);
     return;
   }
   if (!chartDrag.active) return;
@@ -1398,7 +1509,7 @@ function moveChartDrag(event) {
 
 function endChartDrag(event) {
   if (event.pointerType === "touch") {
-    endPinchZoom(event);
+    endTouchGesture(event, event.type === "pointercancel");
     return;
   }
   if (!chartDrag.active) return;
@@ -1536,6 +1647,11 @@ function bindEvents() {
   refs.canvas.addEventListener("pointermove", moveChartDrag);
   refs.canvas.addEventListener("pointerup", endChartDrag);
   refs.canvas.addEventListener("pointercancel", endChartDrag);
+  refs.canvas.addEventListener("lostpointercapture", (event) => {
+    if (event.pointerType === "touch" && chartTouch.pointers.has(event.pointerId)) {
+      endTouchGesture(event, true);
+    }
+  });
   refs.canvas.addEventListener("wheel", handleChartWheel, { passive: false });
   refs.canvas.addEventListener("dblclick", resetChartZoom);
   refs.canvas.addEventListener("mouseleave", () => {
@@ -1543,9 +1659,7 @@ function bindEvents() {
     refs.tooltip.hidden = true;
     drawChart();
   });
-  refs.canvas.addEventListener("touchmove", (event) => {
-    if (event.touches.length) renderTooltip(event.touches[0]);
-  }, { passive: true });
+  refs.chartResetButton.addEventListener("click", resetChartZoom);
   refs.chartHScroll.addEventListener("pointerdown", startChartScrollbarDrag);
   refs.chartHScroll.addEventListener("pointermove", moveChartScrollbarDrag);
   refs.chartHScroll.addEventListener("pointerup", endChartScrollbarDrag);
@@ -1572,6 +1686,7 @@ function bindEvents() {
     }
   });
   window.addEventListener("resize", () => {
+    clearChartTouchState();
     window.clearTimeout(window._chartResizeTimer);
     window._chartResizeTimer = window.setTimeout(() => {
       drawChart();

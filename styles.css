@@ -625,6 +625,30 @@ canvas.dragging {
   height: calc(100% - 2px);
 }
 
+.chart-reset-button {
+  display: none;
+  position: absolute;
+  z-index: 5;
+  top: 62px;
+  right: 16px;
+  min-width: 72px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid rgba(37, 59, 115, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 4px 14px rgba(30, 38, 55, 0.16);
+  touch-action: manipulation;
+}
+
+.chart-reset-button[hidden] {
+  display: none !important;
+}
+
 .tooltip {
   position: absolute;
   pointer-events: none;
@@ -769,15 +793,26 @@ canvas.dragging {
 
 @media (max-width: 900px) {
   .chart-shell {
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden;
+    overscroll-behavior-x: none;
   }
 
   canvas {
-    width: max(820px, 100%);
-    max-width: none;
-    touch-action: pan-x pan-y;
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: auto;
+    cursor: default;
+    touch-action: pan-y;
+  }
+
+  .chart-scrollbars {
+    display: none !important;
+  }
+
+  .chart-reset-button:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
