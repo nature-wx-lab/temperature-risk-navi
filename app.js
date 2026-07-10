@@ -785,7 +785,7 @@ function setupCanvas() {
   const rect = refs.canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
   const width = Math.max(320, rect.width);
-  const height = width * (820 / 1440);
+  const height = width * (780 / 1440);
   refs.canvas.width = Math.round(width * ratio);
   refs.canvas.height = Math.round(height * ratio);
   refs.canvas.style.height = `${height}px`;
@@ -1040,7 +1040,7 @@ function drawChart() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
   const headerBottom = drawChartHeader(ctx, width, presentation);
-  const margin = { left: Math.max(62, width * 0.06), right: 30, top: headerBottom, bottom: 72 };
+  const margin = { left: Math.max(62, width * 0.06), right: 30, top: headerBottom, bottom: 48 };
   const plot = {
     left: margin.left,
     top: margin.top,
@@ -1170,7 +1170,7 @@ function positionChartScrollbars(plot) {
   const canvasLeft = refs.canvas.offsetLeft;
   const canvasTop = refs.canvas.offsetTop;
   refs.chartHScroll.style.left = `${canvasLeft + plot.left}px`;
-  refs.chartHScroll.style.top = `${canvasTop + plot.bottom + 40}px`;
+  refs.chartHScroll.style.top = `${canvasTop + plot.bottom + 32}px`;
   refs.chartHScroll.style.width = `${plot.width}px`;
 }
 

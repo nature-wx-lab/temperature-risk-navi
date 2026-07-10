@@ -245,7 +245,7 @@ main {
   position: relative;
   width: min(1440px, 100%);
   margin: 0 auto;
-  padding: 4px calc(clamp(10px, 2.4vw, 24px) + var(--toggle-gutter)) 22px clamp(10px, 2.4vw, 24px);
+  padding: 4px calc(clamp(10px, 2.4vw, 24px) + var(--toggle-gutter)) 10px clamp(10px, 2.4vw, 24px);
 }
 
 .panel-toggles {
@@ -570,7 +570,7 @@ canvas {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 1440 / 820;
+  aspect-ratio: 1440 / 780;
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -718,7 +718,7 @@ canvas.dragging {
 }
 
 .app-footer {
-  padding: 18px clamp(16px, 4vw, 44px) 28px;
+  padding: 10px clamp(16px, 4vw, 44px) 14px;
   color: var(--muted);
   font-size: 12px;
   text-align: center;
