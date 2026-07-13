@@ -51,11 +51,20 @@ const refs = {
   chartScrollbars: document.querySelector("#chartScrollbars"),
   chartHScroll: document.querySelector("#chartHScroll"),
   tooltip: document.querySelector("#tooltip"),
+  chartLegend: document.querySelector(".chart-legend"),
+  statsLegendRow: document.querySelector("#statsLegendRow"),
+  overlayLegendRow: document.querySelector("#overlayLegendRow"),
+  rangeLegendItem: document.querySelector("#rangeLegendItem"),
+  p1090LegendItem: document.querySelector("#p1090LegendItem"),
+  p2575LegendItem: document.querySelector("#p2575LegendItem"),
+  meanLegendItem: document.querySelector("#meanLegendItem"),
+  medianLegendItem: document.querySelector("#medianLegendItem"),
   yearLegendItem: document.querySelector("#yearLegendItem"),
   yearLegendLabel: document.querySelector("#yearLegendLabel"),
   currentYearLegendItem: document.querySelector("#currentYearLegendItem"),
   currentYearLegendLabel: document.querySelector("#currentYearLegendLabel"),
   forecastLegendItem: document.querySelector("#forecastLegendItem"),
+  thresholdMarkerLegendItem: document.querySelector("#thresholdMarkerLegendItem"),
   stationPosition: document.querySelector("#stationPosition"),
   stationElevation: document.querySelector("#stationElevation"),
   stationBlock: document.querySelector("#stationBlock"),
@@ -409,14 +418,60 @@ function setOverlayButtons() {
   }
 }
 
-function updateLegend() {
-  const layers = effectiveChartLayers();
+function hasVisibleSeriesValue(series, zoom) {
+  if (!Array.isArray(series)) return false;
+  const start = Math.max(0, Math.ceil(zoom.start));
+  const end = Math.min(series.length - 1, Math.floor(zoom.end));
+  for (let index = start; index <= end; index += 1) {
+    if (finite(series[index])) return true;
+  }
+  return false;
+}
+
+function hasVisibleBandValue(lower, upper, zoom) {
+  if (!Array.isArray(lower) || !Array.isArray(upper)) return false;
+  const start = Math.max(0, Math.ceil(zoom.start));
+  const end = Math.min(lower.length - 1, upper.length - 1, Math.floor(zoom.end));
+  for (let index = start; index <= end; index += 1) {
+    if (finite(lower[index]) && finite(upper[index])) return true;
+  }
+  return false;
+}
+
+function chartLegendVisibility(stats, layers, zoom) {
+  const inVisibleRange = (index) => index >= zoom.start && index <= zoom.end;
+  return {
+    range: hasVisibleBandValue(stats.min, stats.max, zoom),
+    p1090: hasVisibleBandValue(stats.p10, stats.p90, zoom),
+    p2575: hasVisibleBandValue(stats.p25, stats.p75, zoom),
+    mean: hasVisibleSeriesValue(stats.mean, zoom),
+    median: hasVisibleSeriesValue(stats.median, zoom),
+    selectedYear: layers.selectedYear && hasVisibleSeriesValue(selectedYearSeries(), zoom),
+    currentYear: layers.currentYear && hasVisibleSeriesValue(currentYearSeries(), zoom),
+    forecast: layers.forecast && layers.forecastPoints.some((point) => inVisibleRange(point.index) && finite(point.value)),
+    thresholdMarkers: state.showThresholdMarkers && thresholdMarkerPoints(stats).some((point) => inVisibleRange(point.index)),
+  };
+}
+
+function updateLegend(stats, layers, zoom) {
+  const visibility = chartLegendVisibility(stats, layers, zoom);
   const currentYear = state.stationData?.current_year?.year || state.data?.current_year?.year;
-  refs.yearLegendItem.hidden = !layers.selectedYear;
+  const hasStats = visibility.range || visibility.p1090 || visibility.p2575 || visibility.mean || visibility.median;
+  const hasOverlays = visibility.selectedYear || visibility.currentYear || visibility.forecast || visibility.thresholdMarkers;
+  refs.rangeLegendItem.hidden = !visibility.range;
+  refs.p1090LegendItem.hidden = !visibility.p1090;
+  refs.p2575LegendItem.hidden = !visibility.p2575;
+  refs.meanLegendItem.hidden = !visibility.mean;
+  refs.medianLegendItem.hidden = !visibility.median;
+  refs.yearLegendItem.hidden = !visibility.selectedYear;
   refs.yearLegendLabel.textContent = `${state.selectedYear}年実況`;
-  refs.currentYearLegendItem.hidden = !layers.currentYear;
+  refs.currentYearLegendItem.hidden = !visibility.currentYear;
   refs.currentYearLegendLabel.textContent = currentYear ? `${currentYear}年実況` : "今年実況";
-  refs.forecastLegendItem.hidden = !layers.forecast;
+  refs.forecastLegendItem.hidden = !visibility.forecast;
+  refs.thresholdMarkerLegendItem.hidden = !visibility.thresholdMarkers;
+  refs.statsLegendRow.hidden = !hasStats;
+  refs.overlayLegendRow.hidden = !hasOverlays;
+  refs.chartLegend.hidden = !(hasStats || hasOverlays);
 }
 
 function fillThresholds() {
@@ -717,14 +772,37 @@ function updateSummary() {
 function updateMeta() {
   const meta = state.data.meta;
   const freshness = forecastFreshness();
-  const updateText = formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at);
-  const forecastUpdate = freshness === "available"
-    ? `｜2週間予報 ${updateText}`
+  const forecastUpdatedAt = forecastStation()?.report_date || state.forecastData?.meta?.generated_at;
+  const updateText = formatUpdateHour(forecastUpdatedAt);
+  const updateTextMobile = formatShortUpdateHour(forecastUpdatedAt).replace(/^\d{4}\//, "");
+  const forecastUpdateFull = freshness === "available"
+    ? ` / 2週間気温予報: ${updateText}`
     : freshness === "stale"
-      ? `｜2週間予報 期限切れ（最終更新 ${updateText}）`
+      ? ` / 2週間気温予報: 期限切れ（最終更新 ${updateText}）`
       : "";
+  const forecastUpdateCompact = freshness === "available"
+    ? `｜2週間気温予報 ${updateText}`
+    : freshness === "stale"
+      ? `｜2週間気温予報 期限切れ（最終更新 ${updateText}）`
+      : "";
+  const forecastUpdateMobile = freshness === "available"
+    ? `｜2週間気温予報${updateTextMobile}`
+    : freshness === "stale"
+      ? `｜2週間気温予報期限切れ ${updateTextMobile}`
+      : "";
+  const latestDate = state.data.current_year?.latest_date || "なし";
+  const fullStatus = document.createElement("span");
+  const compactStatus = document.createElement("span");
+  const mobileStatus = document.createElement("span");
+  fullStatus.className = "status-full";
+  compactStatus.className = "status-compact";
+  mobileStatus.className = "status-mobile";
+  fullStatus.textContent = `統計期間: ${meta.base_period}年 / 今年実況: ${latestDate}${forecastUpdateFull}`;
+  compactStatus.textContent = `統計 ${meta.base_period}年｜実況 ${latestDate}${forecastUpdateCompact}`;
+  mobileStatus.textContent = `統計${meta.base_period}｜実況${formatMonthDay(latestDate)}${forecastUpdateMobile}`;
   refs.datasetMeta.textContent = `${meta.base_period}年・気象台等${meta.station_count}地点`;
-  refs.statusText.textContent = `統計 ${meta.base_period}年｜実況 ${state.data.current_year?.latest_date || "なし"}${forecastUpdate}`;
+  refs.statusText.replaceChildren(fullStatus, compactStatus, mobileStatus);
+  refs.statusText.setAttribute("aria-label", fullStatus.textContent);
 }
 
 function updateUrl() {
@@ -952,6 +1030,7 @@ function chartPresentation() {
   const station = currentStation();
   const period = periodMeta(state.viewMode === "stats" ? state.period : state.backgroundPeriod);
   const layers = effectiveChartLayers();
+  const legendVisibility = chartLegendVisibility(baseStats(), layers, chartZoom());
   const currentYear = state.stationData.current_year?.year || state.data.current_year?.year;
   const currentLabel = currentYear ? `${currentYear}年実況` : "今年実況";
   const focus = [
@@ -994,17 +1073,17 @@ function chartPresentation() {
     );
   }
 
-  const legend = [
-    "赤=平均",
-    "青=中央値",
-    "青帯=過去分布の中央80%・50%",
-    "灰=期間内の最小〜最大",
-  ];
-  if (layers.selectedYear) legend.push(`黒=${state.selectedYear}年`);
-  if (layers.currentYear) legend.push(`緑=${currentLabel}`);
-  if (layers.forecast) legend.push("紫=2週間気温予報");
+  const legend = [];
+  if (legendVisibility.range) legend.push("灰=期間内の最小〜最大");
+  if (legendVisibility.p1090) legend.push("淡青帯=10〜90%");
+  if (legendVisibility.p2575) legend.push("青帯=25〜75%");
+  if (legendVisibility.mean) legend.push("赤=平均");
+  if (legendVisibility.median) legend.push("青=中央値");
+  if (legendVisibility.selectedYear) legend.push(`黒=${state.selectedYear}年実況`);
+  if (legendVisibility.currentYear) legend.push(`緑=${currentLabel}`);
+  if (legendVisibility.forecast) legend.push("紫=2週間気温予報");
   legend.push(`茶破線=${Number(state.threshold)}℃`);
-  if (state.showThresholdMarkers) {
+  if (legendVisibility.thresholdMarkers) {
     legend.push(state.viewMode === "year" ? "赤丸=背景統計の目安日" : "赤丸=統計上の目安日");
   }
 
@@ -1063,6 +1142,7 @@ function drawChart() {
   const zoom = chartZoom();
   const range = dataRange(stats, zoom);
   const presentation = chartPresentation();
+  updateLegend(stats, presentation.layers, zoom);
 
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#ffffff";
@@ -1577,7 +1657,6 @@ function renderAll() {
   refs.stationSelect.value = state.stationKey;
   updateSummary();
   updateMeta();
-  updateLegend();
   updateUrl();
   drawChart();
   window.requestAnimationFrame(setPanelTogglePositions);
