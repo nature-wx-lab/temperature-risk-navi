@@ -457,7 +457,14 @@ function updateLegend(stats, layers, zoom) {
   const visibility = chartLegendVisibility(stats, layers, zoom);
   const currentYear = state.stationData?.current_year?.year || state.data?.current_year?.year;
   const hasStats = visibility.range || visibility.p1090 || visibility.p2575 || visibility.mean || visibility.median;
-  const hasOverlays = visibility.selectedYear || visibility.currentYear || visibility.forecast || visibility.thresholdMarkers;
+  const hasSeriesOverlays = visibility.selectedYear || visibility.currentYear || visibility.forecast;
+  const markerSharesStatsRow = visibility.thresholdMarkers && hasStats && !hasSeriesOverlays && !mobileChartMode();
+  const markerRow = markerSharesStatsRow ? refs.statsLegendRow : refs.overlayLegendRow;
+  if (refs.thresholdMarkerLegendItem.parentElement !== markerRow) {
+    markerRow.append(refs.thresholdMarkerLegendItem);
+  }
+  const hasStatsRow = hasStats || markerSharesStatsRow;
+  const hasOverlayRow = hasSeriesOverlays || (visibility.thresholdMarkers && !markerSharesStatsRow);
   refs.rangeLegendItem.hidden = !visibility.range;
   refs.p1090LegendItem.hidden = !visibility.p1090;
   refs.p2575LegendItem.hidden = !visibility.p2575;
@@ -469,9 +476,9 @@ function updateLegend(stats, layers, zoom) {
   refs.currentYearLegendLabel.textContent = currentYear ? `${currentYear}年実況` : "今年実況";
   refs.forecastLegendItem.hidden = !visibility.forecast;
   refs.thresholdMarkerLegendItem.hidden = !visibility.thresholdMarkers;
-  refs.statsLegendRow.hidden = !hasStats;
-  refs.overlayLegendRow.hidden = !hasOverlays;
-  refs.chartLegend.hidden = !(hasStats || hasOverlays);
+  refs.statsLegendRow.hidden = !hasStatsRow;
+  refs.overlayLegendRow.hidden = !hasOverlayRow;
+  refs.chartLegend.hidden = !(hasStatsRow || hasOverlayRow);
 }
 
 function fillThresholds() {
