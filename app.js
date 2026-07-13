@@ -51,6 +51,11 @@ const refs = {
   chartScrollbars: document.querySelector("#chartScrollbars"),
   chartHScroll: document.querySelector("#chartHScroll"),
   tooltip: document.querySelector("#tooltip"),
+  yearLegendItem: document.querySelector("#yearLegendItem"),
+  yearLegendLabel: document.querySelector("#yearLegendLabel"),
+  currentYearLegendItem: document.querySelector("#currentYearLegendItem"),
+  currentYearLegendLabel: document.querySelector("#currentYearLegendLabel"),
+  forecastLegendItem: document.querySelector("#forecastLegendItem"),
   stationPosition: document.querySelector("#stationPosition"),
   stationElevation: document.querySelector("#stationElevation"),
   stationBlock: document.querySelector("#stationBlock"),
@@ -402,6 +407,16 @@ function setOverlayButtons() {
     refs.forecastButton.textContent = "2週間気温予報なし";
     refs.forecastButton.title = "この地点の2週間気温予報はありません";
   }
+}
+
+function updateLegend() {
+  const layers = effectiveChartLayers();
+  const currentYear = state.stationData?.current_year?.year || state.data?.current_year?.year;
+  refs.yearLegendItem.hidden = !layers.selectedYear;
+  refs.yearLegendLabel.textContent = `${state.selectedYear}年実況`;
+  refs.currentYearLegendItem.hidden = !layers.currentYear;
+  refs.currentYearLegendLabel.textContent = currentYear ? `${currentYear}年実況` : "今年実況";
+  refs.forecastLegendItem.hidden = !layers.forecast;
 }
 
 function fillThresholds() {
@@ -1562,6 +1577,7 @@ function renderAll() {
   refs.stationSelect.value = state.stationKey;
   updateSummary();
   updateMeta();
+  updateLegend();
   updateUrl();
   drawChart();
   window.requestAnimationFrame(setPanelTogglePositions);

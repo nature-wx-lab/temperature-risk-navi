@@ -692,6 +692,10 @@ canvas.dragging {
   white-space: nowrap;
 }
 
+.legend-row b {
+  font-weight: 700;
+}
+
 .swatch {
   display: inline-block;
   width: 28px;
@@ -724,6 +728,18 @@ canvas.dragging {
 
 .line.median {
   border-color: var(--blue);
+}
+
+.line.year {
+  border-color: #111827;
+}
+
+.line.current {
+  border-color: var(--green);
+}
+
+.line.forecast {
+  border-color: var(--purple);
 }
 
 .marker-dot {
