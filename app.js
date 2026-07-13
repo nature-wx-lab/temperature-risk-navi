@@ -719,12 +719,12 @@ function updateMeta() {
   const freshness = forecastFreshness();
   const updateText = formatUpdateHour(forecastStation()?.report_date || state.forecastData?.meta?.generated_at);
   const forecastUpdate = freshness === "available"
-    ? ` / 2週間気温予報: ${updateText}`
+    ? `｜2週間予報 ${updateText}`
     : freshness === "stale"
-      ? ` / 2週間気温予報: 期限切れ（最終更新 ${updateText}）`
+      ? `｜2週間予報 期限切れ（最終更新 ${updateText}）`
       : "";
   refs.datasetMeta.textContent = `${meta.base_period}年・気象台等${meta.station_count}地点`;
-  refs.statusText.textContent = `統計期間: ${meta.base_period}年 / 今年実況: ${state.data.current_year?.latest_date || "なし"}${forecastUpdate}`;
+  refs.statusText.textContent = `統計 ${meta.base_period}年｜実況 ${state.data.current_year?.latest_date || "なし"}${forecastUpdate}`;
 }
 
 function updateUrl() {

@@ -23,7 +23,7 @@
       gtag("js", new Date());
       gtag("config", "G-NJ7CV90Q8F");
     </script>
-    <link rel="stylesheet" href="./styles.css?v=20260713a" />
+    <link rel="stylesheet" href="./styles.css?v=20260713d" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -190,17 +190,7 @@
 
       <section class="chart-shell" aria-label="日別気温統計グラフ">
         <canvas id="chartCanvas" width="1440" height="780"></canvas>
-        <button id="chartResetButton" type="button" class="chart-reset-button" aria-label="グラフを全期間表示に戻す" hidden>全期間</button>
-        <div id="chartScrollbars" class="chart-scrollbars" hidden>
-          <div id="chartHScroll" class="chart-scrollbar chart-scrollbar-x" role="scrollbar" aria-label="表示範囲を左右に移動" aria-orientation="horizontal" tabindex="0">
-            <div class="chart-scrollbar-thumb"></div>
-          </div>
-        </div>
-        <div id="tooltip" class="tooltip" hidden></div>
-      </section>
-
-      <section class="details">
-        <div class="legend-row">
+        <div class="chart-legend legend-row" aria-label="グラフ凡例">
           <span><i class="swatch range"></i>過去MAX〜MIN</span>
           <span><i class="swatch p1090"></i>10〜90%</span>
           <span><i class="swatch p2575"></i>25〜75%</span>
@@ -211,6 +201,16 @@
           <span id="forecastLegendItem" hidden><i class="line forecast"></i><b>2週間気温予報</b></span>
           <span><i class="marker-dot"></i>目安日</span>
         </div>
+        <button id="chartResetButton" type="button" class="chart-reset-button" aria-label="グラフを全期間表示に戻す" hidden>全期間</button>
+        <div id="chartScrollbars" class="chart-scrollbars" hidden>
+          <div id="chartHScroll" class="chart-scrollbar chart-scrollbar-x" role="scrollbar" aria-label="表示範囲を左右に移動" aria-orientation="horizontal" tabindex="0">
+            <div class="chart-scrollbar-thumb"></div>
+          </div>
+        </div>
+        <div id="tooltip" class="tooltip" hidden></div>
+      </section>
+
+      <section class="details">
         <p id="statusText"></p>
       </section>
     </main>
@@ -219,6 +219,6 @@
       出典：気象庁「過去の気象データ検索」をもとに作成。グラフは観測データを独自に集計・可視化したものです。欠測は0扱いせず、有効値のみで集計しています。
     </footer>
 
-    <script src="./app.js?v=20260713a" defer></script>
+    <script src="./app.js?v=20260713d" defer></script>
   </body>
 </html>
