@@ -424,7 +424,12 @@ def main() -> None:
 
     latest_date = max(latest_dates) if latest_dates else None
     required_latest_date = required_date.isoformat() if required_date else None
-    freshness_ok = required_latest_date is None or (latest_date is not None and latest_date >= required_latest_date)
+    fresh_station_count = (
+        sum(station_latest_date >= required_latest_date for station_latest_date in latest_dates)
+        if required_latest_date
+        else None
+    )
+    freshness_ok = required_latest_date is None or fresh_station_count == len(stations)
     index_changed = update_index(
         index_path=args.index,
         index_payload=index_payload,
@@ -443,6 +448,8 @@ def main() -> None:
         "index_changed": index_changed,
         "latest_date": latest_date,
         "required_latest_date": required_latest_date,
+        "fresh_station_count": fresh_station_count,
+        "required_station_count": len(stations) if required_latest_date else None,
         "freshness_ok": freshness_ok,
         "error_count": len(errors),
         "errors": errors,
@@ -451,7 +458,9 @@ def main() -> None:
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if not freshness_ok:
         raise SystemExit(
-            f"current observations are stale: latest_date={latest_date}, required_latest_date={required_latest_date}"
+            "current observations are stale: "
+            f"latest_date={latest_date}, required_latest_date={required_latest_date}, "
+            f"fresh_station_count={fresh_station_count}/{len(stations)}"
         )
 
 
