@@ -57,7 +57,9 @@ python scripts/update_twoweek_forecast.py
 python scripts/update_current_observations.py --months-back 1
 ```
 
-`.github/workflows/update-current-observations.yml` を使うと、GitHub Actionsが毎日 09:40 / 12:40 / 15:40 / 18:40 JST ごろに気象庁「過去の気象データ検索」の日ごとの値を取得し、`data/stations/*.json` と `data/climatology_index_1996_2025_s_stations.json` の今年実況を更新します。通常は前月・当月だけを取り直し、月またぎの取りこぼしを防ぎます。さらに毎日 21:40 JST ごろに1月から当月までを再走査し、遅延反映や一時的な取得漏れを拾います。取得が早すぎてJMA側に前日分がまだ入っていない場合でも、既存値は消さず、後続実行で反映されます。
+`.github/workflows/update-current-observations.yml` を使うと、GitHub Actionsが毎日 09:40 / 12:40 / 15:40 / 18:40 JST ごろに気象庁「過去の気象データ検索」の日ごとの値を取得し、`data/stations/*.json` と `data/climatology_index_1996_2025_s_stations.json` の今年実況を更新します。通常は前月・当月だけを取り直し、月またぎの取りこぼしを防ぎます。さらに毎日 21:40 JST ごろに1月から当月までを再走査し、遅延反映や一時的な取得漏れを拾います。2週間気温予報の更新完了時にも別経路で起動するため、観測側の定期実行が遅延・欠落した場合を補完します。
+
+各実行は公開indexの `current_year.latest_date` がJSTの前日まで到達したか確認し、未到達なら10分間隔で最大3回再取得します。それでも未到達の場合は、途中まで取得できた有効値を先にコミットしたうえでActionsを失敗にし、更新遅延を検知できる状態にします。既存値は取得失敗で消しません。
 
 Actionsが緑の `Success` でも、JMA取得エラーが多いと `latest_date` が進まないことがあります。ログの `latest_date`、`changed_station_count`、`error_count` と、公開JSONの `current_year.latest_date` を確認してください。
 

@@ -13,7 +13,7 @@ import argparse
 import calendar
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 import json
 from pathlib import Path
@@ -173,6 +173,13 @@ def months_to_fetch(current_month: int, months_back: int, full_year_to_date: boo
         return list(range(1, current_month + 1))
     start = max(1, current_month - max(0, months_back))
     return list(range(start, current_month + 1))
+
+
+def required_observation_date(year: int, month: int, now: datetime) -> date | None:
+    today = now.date()
+    if year != today.year or month != today.month or today == date(today.year, 1, 1):
+        return None
+    return today - timedelta(days=1)
 
 
 def fetch_month(
@@ -366,6 +373,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--user-agent", default=USER_AGENT)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--require-through-yesterday",
+        action="store_true",
+        help="Exit unsuccessfully when the public latest date has not reached yesterday in JST.",
+    )
     return parser.parse_args()
 
 
@@ -376,6 +388,7 @@ def main() -> None:
     month = args.month or now.month
     today = date(year, month, now.day) if year == now.year and month == now.month else date(year, month, calendar.monthrange(year, month)[1])
     months = months_to_fetch(month, args.months_back, args.full_year_to_date)
+    required_date = required_observation_date(year, month, now) if args.require_through_yesterday else None
 
     index_payload = load_index(args.index)
     days = list(index_payload.get("days", []))
@@ -410,6 +423,8 @@ def main() -> None:
             latest_dates.append(latest_date)
 
     latest_date = max(latest_dates) if latest_dates else None
+    required_latest_date = required_date.isoformat() if required_date else None
+    freshness_ok = required_latest_date is None or (latest_date is not None and latest_date >= required_latest_date)
     index_changed = update_index(
         index_path=args.index,
         index_payload=index_payload,
@@ -427,11 +442,17 @@ def main() -> None:
         "changed_station_count": changed_station_count,
         "index_changed": index_changed,
         "latest_date": latest_date,
+        "required_latest_date": required_latest_date,
+        "freshness_ok": freshness_ok,
         "error_count": len(errors),
         "errors": errors,
         "dry_run": args.dry_run,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
+    if not freshness_ok:
+        raise SystemExit(
+            f"current observations are stale: latest_date={latest_date}, required_latest_date={required_latest_date}"
+        )
 
 
 if __name__ == "__main__":

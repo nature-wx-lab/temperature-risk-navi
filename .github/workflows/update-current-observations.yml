@@ -14,16 +14,29 @@ on:
     - cron: "40 0,3,6,9 * * *"
     # 21:40 JST every day. Re-scan year-to-date to catch missed day/month-boundary updates.
     - cron: "40 12 * * *"
+  workflow_run:
+    workflows: ["Update two-week temperature forecast"]
+    types: [completed]
 
 permissions:
   contents: write
 
+concurrency:
+  group: update-current-year-observations
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MAX_ATTEMPTS: "3"
+      RETRY_DELAY_SECONDS: "600"
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -31,14 +44,29 @@ jobs:
           python-version: "3.12"
 
       - name: Update current observation JSON
+        id: observations
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full_year_to_date }}" = "true" ]; then
-            python scripts/update_current_observations.py --full-year-to-date
+            update_args=(--full-year-to-date)
           elif [ "${{ github.event.schedule }}" = "40 12 * * *" ]; then
-            python scripts/update_current_observations.py --full-year-to-date
+            update_args=(--full-year-to-date)
           else
-            python scripts/update_current_observations.py --months-back 1
+            update_args=(--months-back 1)
           fi
+
+          freshness_ok=false
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            echo "Observation freshness attempt ${attempt}/${MAX_ATTEMPTS}"
+            if python scripts/update_current_observations.py "${update_args[@]}" --require-through-yesterday; then
+              freshness_ok=true
+              break
+            fi
+            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+              echo "::warning::Previous-day observations are not ready. Retrying in ${RETRY_DELAY_SECONDS} seconds."
+              sleep "$RETRY_DELAY_SECONDS"
+            fi
+          done
+          echo "freshness_ok=$freshness_ok" >> "$GITHUB_OUTPUT"
 
       - name: Commit current observation update
         run: |
@@ -50,4 +78,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/climatology_index_1996_2025_s_stations.json data/stations
           git commit -m "Update current-year observations"
+          git pull --rebase origin main
           git push
+
+      - name: Require observations through yesterday
+        if: steps.observations.outputs.freshness_ok != 'true'
+        run: |
+          echo "::error::Current-year observations did not reach yesterday after ${MAX_ATTEMPTS} attempts."
+          exit 1
