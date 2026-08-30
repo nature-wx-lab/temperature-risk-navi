@@ -43,6 +43,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Test observation freshness policy
+        run: python -m unittest discover -s tests -p "test_*.py"
+
       - name: Update current observation JSON
         id: observations
         run: |

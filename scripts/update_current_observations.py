@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from html.parser import HTMLParser
 import json
+import math
 from pathlib import Path
 import re
 from typing import Any
@@ -30,6 +31,7 @@ DEFAULT_STATION_DIR = ROOT / "data/stations"
 BASE_URL = "https://www.data.jma.go.jp/stats/etrn/view/{daily_page}.php"
 USER_AGENT = "NatureWxLab-TemperatureRiskNavi/1.0 (+https://note.com/nature_wx_lab)"
 JST = ZoneInfo("Asia/Tokyo")
+MAX_OFFICIAL_MISSING_RATIO = 0.01
 
 
 @dataclass(frozen=True)
@@ -288,6 +290,81 @@ def latest_series_date(current: dict[str, Any], days: list[dict[str, Any]], year
     return latest.isoformat() if latest else None
 
 
+def evaluate_freshness(
+    stations: list[Station],
+    fetched: dict[str, dict[int, dict[int, dict[str, float | None]]]],
+    latest_dates: dict[str, str | None],
+    required_date: date | None,
+) -> dict[str, Any]:
+    """Accept only bounded, explicit JMA missing values; keep other staleness fatal."""
+    if required_date is None:
+        return {
+            "freshness_status": "not_required",
+            "required_latest_date": None,
+            "fresh_station_count": None,
+            "required_station_count": None,
+            "stale_station_count": None,
+            "official_missing_station_count": 0,
+            "official_missing_stations": [],
+            "allowed_official_missing_station_count": 0,
+            "freshness_ok": True,
+        }
+
+    required_latest_date = required_date.isoformat()
+    station_by_key = {station.station_key: station for station in stations}
+    stale_station_keys = [
+        station.station_key
+        for station in stations
+        if not latest_dates.get(station.station_key)
+        or str(latest_dates[station.station_key]) < required_latest_date
+    ]
+    official_missing_stations: list[dict[str, str | None]] = []
+    for station_key in stale_station_keys:
+        required_row = (
+            fetched.get(station_key, {})
+            .get(required_date.month, {})
+            .get(required_date.day)
+        )
+        if not isinstance(required_row, dict):
+            continue
+        if required_row.get("max") is not None or required_row.get("min") is not None:
+            continue
+        station = station_by_key[station_key]
+        official_missing_stations.append({
+            "station_key": station_key,
+            "name": station.name,
+            "latest_date": latest_dates.get(station_key),
+        })
+
+    allowed_official_missing_station_count = max(
+        1,
+        math.ceil(len(stations) * MAX_OFFICIAL_MISSING_RATIO),
+    )
+    only_bounded_official_missing = (
+        bool(stale_station_keys)
+        and len(official_missing_stations) == len(stale_station_keys)
+        and len(official_missing_stations) <= allowed_official_missing_station_count
+    )
+    if not stale_station_keys:
+        freshness_status = "complete"
+    elif only_bounded_official_missing:
+        freshness_status = "official_missing_within_limit"
+    else:
+        freshness_status = "stale"
+
+    return {
+        "freshness_status": freshness_status,
+        "required_latest_date": required_latest_date,
+        "fresh_station_count": len(stations) - len(stale_station_keys),
+        "required_station_count": len(stations),
+        "stale_station_count": len(stale_station_keys),
+        "official_missing_station_count": len(official_missing_stations),
+        "official_missing_stations": official_missing_stations,
+        "allowed_official_missing_station_count": allowed_official_missing_station_count,
+        "freshness_ok": not stale_station_keys or only_bounded_official_missing,
+    }
+
+
 def update_station_file(
     station: Station,
     station_dir: Path,
@@ -337,6 +414,7 @@ def update_index(
     latest_date: str | None,
     fetched_months: list[int],
     changed_station_count: int,
+    freshness: dict[str, Any],
     dry_run: bool,
 ) -> bool:
     current = index_payload.setdefault("current_year", {})
@@ -347,6 +425,13 @@ def update_index(
         "updated_at": datetime.now(JST).isoformat(timespec="seconds"),
         "updater": "scripts/update_current_observations.py",
         "fetch_months": fetched_months,
+        "freshness_status": freshness["freshness_status"],
+        "required_latest_date": freshness["required_latest_date"],
+        "fresh_station_count": freshness["fresh_station_count"],
+        "required_station_count": freshness["required_station_count"],
+        "official_missing_station_count": freshness["official_missing_station_count"],
+        "official_missing_stations": freshness["official_missing_stations"],
+        "allowed_official_missing_station_count": freshness["allowed_official_missing_station_count"],
     }
     for key, value in updates.items():
         if key == "updated_at" and changed_station_count == 0 and current.get("latest_date") == latest_date:
@@ -405,7 +490,7 @@ def main() -> None:
     )
 
     changed_station_count = 0
-    latest_dates: list[str] = []
+    latest_dates: dict[str, str | None] = {}
     for station in stations:
         changed, latest_date = update_station_file(
             station=station,
@@ -419,17 +504,16 @@ def main() -> None:
         )
         if changed:
             changed_station_count += 1
-        if latest_date:
-            latest_dates.append(latest_date)
+        latest_dates[station.station_key] = latest_date
 
-    latest_date = max(latest_dates) if latest_dates else None
-    required_latest_date = required_date.isoformat() if required_date else None
-    fresh_station_count = (
-        sum(station_latest_date >= required_latest_date for station_latest_date in latest_dates)
-        if required_latest_date
-        else None
+    available_latest_dates = [value for value in latest_dates.values() if value]
+    latest_date = max(available_latest_dates) if available_latest_dates else None
+    freshness = evaluate_freshness(
+        stations=stations,
+        fetched=fetched,
+        latest_dates=latest_dates,
+        required_date=required_date,
     )
-    freshness_ok = required_latest_date is None or fresh_station_count == len(stations)
     index_changed = update_index(
         index_path=args.index,
         index_payload=index_payload,
@@ -437,6 +521,7 @@ def main() -> None:
         latest_date=latest_date,
         fetched_months=months,
         changed_station_count=changed_station_count,
+        freshness=freshness,
         dry_run=args.dry_run,
     )
 
@@ -447,20 +532,29 @@ def main() -> None:
         "changed_station_count": changed_station_count,
         "index_changed": index_changed,
         "latest_date": latest_date,
-        "required_latest_date": required_latest_date,
-        "fresh_station_count": fresh_station_count,
-        "required_station_count": len(stations) if required_latest_date else None,
-        "freshness_ok": freshness_ok,
+        **freshness,
         "error_count": len(errors),
         "errors": errors,
         "dry_run": args.dry_run,
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    if not freshness_ok:
+    if freshness["freshness_status"] == "official_missing_within_limit":
+        missing_names = ", ".join(
+            str(row["name"])
+            for row in freshness["official_missing_stations"]
+        )
+        print(
+            "::warning title=Official JMA values are missing::"
+            f"Accepted {freshness['official_missing_station_count']} station(s) with explicit JMA missing values: "
+            f"{missing_names}",
+            flush=True,
+        )
+    if not freshness["freshness_ok"]:
         raise SystemExit(
             "current observations are stale: "
-            f"latest_date={latest_date}, required_latest_date={required_latest_date}, "
-            f"fresh_station_count={fresh_station_count}/{len(stations)}"
+            f"latest_date={latest_date}, required_latest_date={freshness['required_latest_date']}, "
+            f"fresh_station_count={freshness['fresh_station_count']}/{len(stations)}, "
+            f"official_missing_station_count={freshness['official_missing_station_count']}"
         )
 
 
